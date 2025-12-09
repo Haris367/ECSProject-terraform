@@ -10,7 +10,7 @@ variable "image_tag" {
 
 variable "repo_name" {
   type    = string
-  default = "node-app"
+  default = "haris367-node-app"
 }
 
 # VPC related
