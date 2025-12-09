@@ -41,8 +41,11 @@ jobs:
         IMAGE_TAG: build-${{ github.run_number }}
         AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         AWS_REGION: ${{ secrets.AWS_REGION }}
+        GITHUB_OWNER: ${{ github.repository_owner }}
       run: |
-        REPO="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ github.repository_owner }}-node-app"
+        # Force repository owner lowercase
+        OWNER_LOWER=$(echo $GITHUB_OWNER | tr '[:upper:]' '[:lower:]')
+        REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${OWNER_LOWER}-node-app"
         echo "Repository: $REPO"
         docker build -t $REPO:$IMAGE_TAG -f docker/Dockerfile .
         docker tag $REPO:$IMAGE_TAG $REPO:latest
@@ -51,17 +54,22 @@ jobs:
       env:
         AWS_REGION: ${{ secrets.AWS_REGION }}
         AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+        GITHUB_OWNER: ${{ github.repository_owner }}
       run: |
-        REPO_NAME="${{ github.repository_owner }}-node-app"
-        aws ecr describe-repositories --region $AWS_REGION --repository-names "$REPO_NAME" || aws ecr create-repository --repository-name "$REPO_NAME" --region $AWS_REGION
+        OWNER_LOWER=$(echo $GITHUB_OWNER | tr '[:upper:]' '[:lower:]')
+        REPO_NAME="${OWNER_LOWER}-node-app"
+        aws ecr describe-repositories --region $AWS_REGION --repository-names "$REPO_NAME" \
+          || aws ecr create-repository --repository-name "$REPO_NAME" --region $AWS_REGION
 
     - name: Push to ECR
       env:
         IMAGE_TAG: build-${{ github.run_number }}
         AWS_REGION: ${{ secrets.AWS_REGION }}
         AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+        GITHUB_OWNER: ${{ github.repository_owner }}
       run: |
-        REPO="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ github.repository_owner }}-node-app"
+        OWNER_LOWER=$(echo $GITHUB_OWNER | tr '[:upper:]' '[:lower:]')
+        REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${OWNER_LOWER}-node-app"
         docker push $REPO:$IMAGE_TAG
 
     - name: Setup Terraform
