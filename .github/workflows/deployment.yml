@@ -50,16 +50,16 @@ jobs:
         docker build -t $REPO:$IMAGE_TAG -f docker/Dockerfile .
         docker tag $REPO:$IMAGE_TAG $REPO:latest
 
-    - name: Create ECR repo if not exists
-      env:
-        AWS_REGION: ${{ secrets.AWS_REGION }}
-        AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-        GITHUB_OWNER: ${{ github.repository_owner }}
-      run: |
-        OWNER_LOWER=$(echo $GITHUB_OWNER | tr '[:upper:]' '[:lower:]')
-        REPO_NAME="${OWNER_LOWER}-node-app"
-        aws ecr describe-repositories --region $AWS_REGION --repository-names "$REPO_NAME" \
-          || aws ecr create-repository --repository-name "$REPO_NAME" --region $AWS_REGION
+    # - name: Create ECR repo if not exists
+    #   env:
+    #     AWS_REGION: ${{ secrets.AWS_REGION }}
+    #     AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+    #     GITHUB_OWNER: ${{ github.repository_owner }}
+    #   run: |
+    #     OWNER_LOWER=$(echo $GITHUB_OWNER | tr '[:upper:]' '[:lower:]')
+    #     REPO_NAME="${OWNER_LOWER}-node-app"
+    #     aws ecr describe-repositories --region $AWS_REGION --repository-names "$REPO_NAME" \
+    #       || aws ecr create-repository --repository-name "$REPO_NAME" --region $AWS_REGION
 
     - name: Push to ECR
       env:
@@ -71,6 +71,7 @@ jobs:
         OWNER_LOWER=$(echo $GITHUB_OWNER | tr '[:upper:]' '[:lower:]')
         REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${OWNER_LOWER}-node-app"
         docker push $REPO:$IMAGE_TAG
+        docker push $REPO:latest
 
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
@@ -84,12 +85,16 @@ jobs:
       run: |
         terraform init -input=false
 
-    - name: Terraform Apply (deploy image to ECS)
+    # - name: Terraform Apply (deploy image to ECS)
+    #   working-directory: terraform
+    #   env:
+    #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    #     AWS_REGION: ${{ secrets.AWS_REGION }}
+    #   run: |
+    #     terraform plan -var="image_tag=build-${{ github.run_number }}" -out=tfplan -input=false
+    #     terraform apply -input=false -auto-approve tfplan
+    - name: Terraform Plan
       working-directory: terraform
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION: ${{ secrets.AWS_REGION }}
-      run: |
-        terraform plan -var="image_tag=build-${{ github.run_number }}" -out=tfplan -input=false
-        terraform apply -input=false -auto-approve tfplan
+      continue-on-error: true
+      run: terraform plan -var="image_tag=build-${{ github.run_number }}"
