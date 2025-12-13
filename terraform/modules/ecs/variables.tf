@@ -7,7 +7,9 @@ variable "repo_url" {
 }
 
 variable "image_tag" {
-  type = string
+  description = "Docker image tag to deploy"
+  type        = string
+  default     = "latest"   # default to latest for testing
 }
 
 variable "vpc_id" {
