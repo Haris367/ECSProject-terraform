@@ -1,256 +1,125 @@
-# ECS Project - Terraform
+# ECS Project with Terraform
 
-A production-ready Infrastructure-as-Code (IaC) project that automates the deployment of a Node.js Express application to AWS ECS (Elastic Container Service) using Terraform and GitHub Actions.
+A small Node.js website packaged as a Docker image and deployed to Amazon ECS on Fargate. Terraform describes the AWS infrastructure, and GitHub Actions builds and publishes the image before planning and applying infrastructure changes.
 
-## Project Overview
+The app is intentionally a simple demo: the home page is static HTML served by Express, with a JSON health endpoint at `/health`. There is no frontend build step, database, or application API beyond health status.
 
-This repository contains:
-- **Node.js Express Application**: A simple REST API running on port 3000
-- **Docker**: Multi-stage containerized build using Alpine Linux
-- **Terraform**: AWS infrastructure provisioning (VPC, ECR, ECS Fargate)
-- **GitHub Actions**: Automated CI/CD pipeline for build, test, and deploy
+## Project scope
 
-## Tech Stack
+- **Application:** Express serves a responsive landing page at `/` and service status at `/health` on port `3000`.
+- **Container:** `docker/Dockerfile` installs production dependencies and runs the Node.js app.
+- **Infrastructure:** Terraform creates a VPC with public subnets and internet access, an ECR repository, and an ECS Fargate cluster, task, and service. The service runs one task with 256 CPU units and 512 MiB memory.
+- **Logs:** ECS sends container logs to a CloudWatch log group with 14-day retention.
+- **Automation:** `.github/workflows/deployment.yml` builds and pushes an image on pushes to `main` (or a manual workflow run), runs Terraform plan, then runs apply in the GitHub `Stage` environment. Configure environment protection rules in GitHub if reviewer approval is required.
 
-| Component | Version |
-|-----------|---------|
-| Node.js | 18+ (Alpine) |
-| Express | 4.18.2 |
-| Docker | Multi-stage build |
-| Terraform | >= 1.5.7 |
-| AWS Provider | v6.0 |
-| AWS Services | ECS Fargate, ECR, VPC, CloudWatch, IAM |
+## Repository layout
 
-## Project Structure
-
-```
+```text
 .
-├── app/                           # Node.js application
-│   ├── index.js                  # Express server entry point
-│   ├── package.json              # Dependencies
+├── app/
+│   ├── index.js                 # Express website and health endpoint
+│   ├── package.json
 │   └── package-lock.json
-├── docker/                        # Container configuration
-│   └── Dockerfile                # Multi-stage Alpine build
-├── terraform/                     # Infrastructure as Code
-│   ├── main.tf                   # Module orchestration
-│   ├── provider.tf               # AWS provider configuration
-│   ├── backend.tf                # S3 state backend
-│   ├── variables.tf              # Input variables
-│   ├── outputs.tf                # Output values
+├── docker/
+│   └── Dockerfile               # Container image definition
+├── terraform/
+│   ├── backend.tf               # S3 remote state configuration
+│   ├── main.tf                  # VPC, ECR, and ECS module wiring
+│   ├── provider.tf
+│   ├── variables.tf
+│   ├── outputs.tf
 │   └── modules/
-│       ├── vpc/                  # VPC networking
-│       ├── ecr/                  # Elastic Container Registry
-│       └── ecs/                  # ECS cluster and service
-├── .github/
-│   └── workflows/
-│       └── deployment.yml        # CI/CD pipeline
-└── README.md                      # This file
+│       ├── vpc/                 # VPC, public subnets, routes
+│       ├── ecr/                 # Container image repository
+│       └── ecs/                 # Fargate cluster, service, task, IAM, logs
+└── .github/workflows/
+    └── deployment.yml           # Build, push, plan, and apply workflow
 ```
 
-## Prerequisites
+## Run locally
 
-### Local Development
-- **Node.js** >= 18
-- **Docker** (for building and testing images locally)
-- **Terraform** >= 1.5.7
-- **AWS CLI** (optional, for manual testing)
+Requirements: Node.js and npm. Docker is optional for running the app directly.
 
-### AWS Setup
-1. **AWS Account** with appropriate permissions
-2. **S3 Bucket**: Create a bucket to store Terraform state (e.g., `your-terraform-states`)
-   - Enable versioning and encryption for security
-3. **IAM Credentials**: AWS access key ID and secret access key
-4. **GitHub Secrets**: Add the following to your GitHub repository:
-   - `AWS_ACCESS_KEY_ID`
-   - `AWS_SECRET_ACCESS_KEY`
-   - `AWS_REGION` (e.g., `us-east-1`)
-   - `AWS_ACCOUNT_ID`
-
-## Getting Started
-
-### 1. Clone the Repository
-```bash
-git clone https://github.com/yourusername/ECSProject-terraform.git
-cd ECSProject-terraform
-```
-
-### 2. Install Dependencies
-```bash
+```sh
 cd app
-npm ci  # Install exact versions from package-lock.json
-cd ..
-```
-
-### 3. Test Application Locally
-```bash
-cd app
+npm ci
 node index.js
-# App will run on http://localhost:3000
-# Output: "NodeJS App deployed on ECS"
 ```
 
-### 4. Build and Test Docker Image
-```bash
-# Build Docker image locally
-docker build -f docker/Dockerfile -t node-app:latest .
+Open `http://localhost:3000` for the landing page and `http://localhost:3000/health` for JSON status. Set `PORT` to change the listening port. `IMAGE_TAG` controls the image label shown on the page and returned by the health endpoint; it defaults to `local`.
 
-# Run container
-docker run -p 3000:3000 node-app:latest
+To build and run the container from the repository root:
 
-# Test in another terminal
-curl http://localhost:3000
+```sh
+docker build -f docker/Dockerfile -t northstar-ecs-demo .
+docker run --rm -p 3000:3000 northstar-ecs-demo
 ```
 
-## Deploying to AWS
+## AWS deployment
 
-### Step 1: Configure AWS Credentials
-```bash
-export AWS_ACCESS_KEY_ID="your-access-key"
-export AWS_SECRET_ACCESS_KEY="your-secret-key"
-export AWS_REGION="us-east-1"
-export AWS_ACCOUNT_ID="123456789012"
-```
+### Prerequisites
 
-### Step 2: Update Terraform Configuration
-Edit `terraform/backend.tf` and update the S3 bucket name to your bucket:
-```hcl
-terraform {
-  backend "s3" {
-    bucket         = "your-terraform-states"  # Change this to your bucket
-    key            = "ecs-project/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-locks"
-  }
-}
-```
+- An AWS account and credentials authorized to manage the resources in the Terraform configuration, ECR images, and ECS deployments.
+- Terraform CLI compatible with the AWS provider constraint in `terraform/provider.tf` (`~> 6.0`).
+- An S3 bucket named `haris-terraform-states` in `us-east-1` for the configured remote state backend. The bucket must exist before `terraform init`.
+- A GitHub repository configured with the Actions secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, and `AWS_ACCOUNT_ID`.
+- An ECR repository whose name matches the workflow's computed name: the lowercase GitHub repository owner followed by `-node-app`. The Terraform `repo_name` default is `haris367-node-app`; change it if it does not match your owner, or update the workflow so both use the same repository name.
 
-### Step 3: Initialize Terraform
-```bash
+The workflow uses access keys to configure AWS credentials. Its permissions also include `id-token: write`, but the current credentials step is configured with access key secrets rather than role assumption through OIDC.
+
+### Manual Terraform workflow
+
+Build and push an image to the ECR repository first, then initialize and deploy Terraform:
+
+```sh
 cd terraform
 terraform init
+terraform plan -var="image_tag=build-1"
+terraform apply -var="image_tag=build-1"
 ```
 
-### Step 4: Plan and Deploy
-```bash
-# Generate deployment plan
-terraform plan -var="image_tag=manual-deploy-1"
+Terraform requires `image_tag`; it selects the image used by the ECS task definition. AWS credentials and the configured backend bucket must be available to the Terraform process. Review the plan before applying it.
 
-# Apply the plan
-terraform apply -var="image_tag=manual-deploy-1"
+### GitHub Actions workflow
+
+On a push to `main` or a manual run, the workflow:
+
+1. Authenticates to AWS and logs in to ECR.
+2. Builds the Docker image and pushes the run-number tag and `latest` tag.
+3. Initializes Terraform and creates a plan for that run-number image tag.
+4. Runs `terraform apply` from a second job using the `Stage` GitHub environment.
+
+The second job applies automatically unless the `Stage` environment is configured with required reviewers or other protection rules. The plan and apply jobs each initialize Terraform independently; the workflow does not pass a saved plan file between them.
+
+## Terraform resources
+
+| Area | Resources and defaults |
+| --- | --- |
+| Networking | VPC `10.0.0.0/16`, two public subnets, internet gateway, public routes |
+| Image registry | Mutable ECR repository; default name `haris367-node-app` |
+| Compute | ECS cluster `node-app-cluster`, Fargate service with one task, 256 CPU units, 512 MiB |
+| Network access | Public IP assigned to the task; security group allows inbound TCP port 3000 from `0.0.0.0/0` |
+| Logs and IAM | CloudWatch log group with 14-day retention; ECS task execution role |
+| State | S3 backend configured in `terraform/backend.tf` for `node-app/terraform.tfstate` in `us-east-1` |
+
+The service has no load balancer or autoscaling configuration. Once a task is running, its public IP can be used with port `3000` to reach the page. Task public IPs can change when tasks are replaced.
+
+## Outputs and logs
+
+Terraform outputs the ECR repository URL and ECS cluster ID. The ECS service name is `node-app-cluster-service`; task logs are written under `/ecs/node-app-cluster`.
+
+```sh
+aws logs tail /ecs/node-app-cluster --follow --region us-east-1
 ```
 
-Terraform will provision:
-- VPC with public subnets across multiple availability zones
-- ECR repository for Docker images
-- ECS Fargate cluster
-- ECS task definition and service
-- CloudWatch log group
-- Security group allowing traffic on port 3000
+## Configuration notes
 
-## CI/CD Pipeline
-
-The GitHub Actions workflow is triggered automatically on push to the `main` branch.
-
-### Pipeline Flow
-
-```
-┌─────────────────────────────────────────────┐
-│ 1. Push to main branch                      │
-└──────────────┬──────────────────────────────┘
-               │
-┌──────────────▼──────────────────────────────┐
-│ 2. build-and-plan Job                       │
-│ - Checkout code                             │
-│ - Configure AWS credentials                 │
-│ - Build Docker image                        │
-│ - Push to ECR (latest + versioned tag)      │
-│ - Run terraform plan                        │
-└──────────────┬──────────────────────────────┘
-               │
-┌──────────────▼──────────────────────────────┐
-│ 3. Manual Approval Required                 │
-│ (Review terraform plan in GitHub UI)        │
-└──────────────┬──────────────────────────────┘
-               │
-┌──────────────▼──────────────────────────────┐
-│ 4. terraform-apply Job                      │
-│ - Run terraform apply                       │
-│ - Update ECS service with new image         │
-│ - Deployment complete                       │
-└─────────────────────────────────────────────┘
-```
-
-### Manual Workflow Trigger
-Go to **Actions** → **Deployment Workflow** → **Run workflow** to manually trigger the pipeline.
-
-## AWS Infrastructure Created
-
-| Resource | Details |
-|----------|---------|
-| **VPC** | 10.0.0.0/16 with 2 public subnets |
-| **ECR Repository** | Docker image registry |
-| **ECS Cluster** | Fargate launch type |
-| **ECS Service** | 1 desired task with auto-assign public IP |
-| **Task Definition** | 256 CPU units, 512 MB memory |
-| **CloudWatch Logs** | 14-day retention log group |
-| **Security Group** | Allows inbound traffic on port 3000 |
-| **IAM Roles** | ECS task execution role with necessary permissions |
-
-## Monitoring and Logs
-
-View ECS logs in CloudWatch:
-```bash
-aws logs tail /ecs/node-app-cluster --follow
-```
-
-Check ECS service status:
-```bash
-aws ecs describe-services \
-  --cluster node-app-cluster \
-  --services node-app-service
-```
-
-## Production Considerations
-
-- **Security Group**: Currently allows public access on port 3000. Restrict to specific IPs/security groups in production.
-- **Task Count**: Increase `desired_count` in ECS service for high availability and load balancing.
-- **Load Balancer**: Consider adding an Application Load Balancer (ALB) for production workloads.
-- **Auto Scaling**: Enable auto-scaling policies based on CPU/memory metrics.
-- **Logging**: Extend CloudWatch retention policy and consider using centralized logging solutions.
-- **Secrets Management**: Use AWS Secrets Manager for sensitive data instead of environment variables.
-
-## Troubleshooting
-
-### Terraform Init Fails
-- Ensure S3 bucket exists and you have permissions
-- Verify AWS credentials are correctly set
-
-### Docker Build Fails
-- Check Node.js version compatibility
-- Verify Docker daemon is running
-
-### GitHub Actions Fails
-- Verify all GitHub secrets are correctly set
-- Check AWS IAM permissions for the credentials used
-
-### ECS Service Won't Start
-- Check CloudWatch logs for errors
-- Verify security group allows inbound traffic
-- Ensure task CPU/memory allocation is sufficient
-
-## Contributing
-
-1. Create a new branch for your changes
-2. Test locally before pushing
-3. Push to trigger GitHub Actions pipeline
-4. Review terraform plan output
-5. Approve deployment when ready
+- The Terraform backend bucket is hard-coded in `terraform/backend.tf`; create it or edit the backend block before initialization.
+- `aws_region` defaults to `us-east-1`. The ECS module currently has its own `aws_region` default, so if deploying elsewhere, pass the same region to the module in `terraform/main.tf` as well as configuring the provider and backend appropriately.
+- Terraform's default ECR name and the workflow's owner-derived ECR name must agree for image pushes and task definitions to refer to the same repository.
+- The task's port is open to the internet. Restrict ingress or add a load balancer and suitable access controls before using this configuration for a public production service.
+- The workflow runs Terraform apply with `-auto-approve`; use GitHub environment protection rules and review the plan job output to control deployments.
 
 ## License
 
-MIT
-
-## Support
-
-For issues or questions, please open a GitHub issue.
+No license file is currently included in this repository.
