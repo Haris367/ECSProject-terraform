@@ -3,7 +3,7 @@ const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 3000;
 const IMAGE_TAG = process.env.IMAGE_TAG || "local";
-
+const config = JSON.parse(process.env.APP_CONFIG);
 app.get("/", (req, res) => {
   res.type("html").send(`<!doctype html>
 <html lang="en">
