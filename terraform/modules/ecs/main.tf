@@ -13,6 +13,10 @@ data "aws_iam_policy_document" "ecs_task_assume" {
     }
   }
 }
+deployment_circuit_breaker {
+  enable   = true
+  rollback = true
+}
 
 resource "aws_iam_role_policy_attachment" "ecs_execution_attach" {
   role       = aws_iam_role.ecs_task_execution.name
