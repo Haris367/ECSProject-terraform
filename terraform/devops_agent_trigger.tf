@@ -3,7 +3,6 @@ variable "ecs_service_name"  { default = "node-app-cluster-service" }
 variable "devops_agent_secret_name" { default = "devops-agent-webhook" }
 
 data "aws_region" "current" {}
-data "aws_caller_identity" "current" {}
 data "aws_secretsmanager_secret" "webhook" { name = var.devops_agent_secret_name }
 
 locals {
